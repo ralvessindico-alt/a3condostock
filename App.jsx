@@ -74,8 +74,8 @@ const S = {
 function bdg(color){return{display:"inline-block",background:`${color}22`,color,borderRadius:5,padding:"2px 8px",fontSize:11,fontWeight:700};}
 function fmtR(n){return"R$ "+new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2}).format(n||0);}
 
-const CATEGORIES=["Limpeza","Descartáveis","Piscina","Jardinagem","Manutenção"];
-const LEAD_TIMES={"Limpeza":7,"Descartáveis":7,"Piscina":10,"Jardinagem":14,"Manutenção":10};
+const CATEGORIES=["Limpeza","Descartáveis","Piscina","Jardinagem","Manutenção","Estética"];
+const LEAD_TIMES={"Limpeza":7,"Descartáveis":7,"Piscina":10,"Jardinagem":14,"Manutenção":10,"Estética":7};
 
 // ── CALC UTILS ─────────────────────────────────────────────────────────────────
 function calcStock(item,movs){
@@ -365,14 +365,14 @@ function ItemsPage({user,items,setItems,movements,setMovements,clients,token}){
           </table>
         </div>
       </div>
-      {sel&&<ItemDetail item={sel} items={items} setItems={setItems} movements={movements} clients={clients} token={token} onClose={()=>setSel(null)}/>}
+      {sel&&<ItemDetail item={sel} items={items} setItems={setItems} movements={movements} clients={clients} token={token} user={user} onClose={()=>setSel(null)}/>}
       {showNew&&<NewItemModal user={user} items={items} setItems={setItems} clients={clients} token={token} onClose={()=>setShowNew(false)}/>}
     </>
   );
 }
 
 // ── ITEM DETAIL ────────────────────────────────────────────────────────────────
-function ItemDetail({item,items,setItems,movements,clients,token,onClose}){
+function ItemDetail({item,items,setItems,movements,clients,token,user,onClose}){
   const [showEdit,setShowEdit]=useState(false);
   const [saving,setSaving]=useState(false);
   const current=calcStock(item,movements);
