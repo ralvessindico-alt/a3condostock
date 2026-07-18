@@ -98,7 +98,8 @@ function bdg(color){return{display:"inline-block",background:`${color}22`,color,
 function fmtR(n){return"R$ "+new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2}).format(n||0);}
 
 const CATEGORIES=["Limpeza","Descartáveis","Piscina","Jardinagem","Manutenção","Estética"];
-const LEAD_TIMES={"Limpeza":7,"Descartáveis":7,"Piscina":10,"Jardinagem":14,"Manutenção":10,"Estética":7};
+const LEAD_TIME_DIAS=7;
+const LEAD_TIMES={"Limpeza":7,"Descartáveis":7,"Piscina":7,"Jardinagem":7,"Manutenção":7,"Estética":7};
 
 // ── CALC UTILS ─────────────────────────────────────────────────────────────────
 function calcStock(item,movs){
@@ -112,21 +113,23 @@ function calcAvgConsumption(item,movs){
   return (movs||[]).filter(m=>m.item_id===item.id&&m.client_id===item.client_id&&m.type==="saida"&&new Date(m.date)>=cutoff).reduce((s,m)=>s+Number(m.qty),0);
 }
 function calcAvgPrice(item,movs){
-  const e=(movs||[]).filter(m=>m.item_id===item.id&&m.client_id===item.client_id&&m.type==="entrada"&&m.price);
+  const e=(movs||[]).filter(m=>m.item_id===item.id&&m.client_id===item.client_id&&m.type==="entrada"&&m.price).slice(-5);
   if(!e.length)return Number(item.avg_price)||0;
   const qty=e.reduce((s,m)=>s+Number(m.qty),0);
   return qty?Math.round(e.reduce((s,m)=>s+Number(m.qty)*Number(m.price),0)/qty*100)/100:Number(item.avg_price)||0;
 }
 function getStock(item){return Number(item.current_stock||0);}
-function calcSuggestedOrder(item){return Math.max(0,(item.stock_max||0)-getStock(item));}
+function calcSuggestedOrder(item,movs){
+  const maxSug=calcSuggestedMax(item,movs);
+  return maxSug?Math.max(0,maxSug-getStock(item)):0;
+}
 function calcSuggestedMin(item,movs){
-  const m=calcAvgConsumption(item,movs);
-  return m?Math.ceil(m/30*(LEAD_TIMES[item.category]||7)):null;
+  const consumoDiario=calcAvgConsumption(item,movs)/30;
+  return consumoDiario?Math.ceil(consumoDiario*LEAD_TIME_DIAS*1.3):null;
 }
 function calcSuggestedMax(item,movs){
-  const m=calcAvgConsumption(item,movs);
-  if(!m)return null;
-  return Math.ceil(m*2+(calcSuggestedMin(item,movs)||0));
+  const consumoMensal=calcAvgConsumption(item,movs);
+  return consumoMensal?Math.ceil(consumoMensal*2):null;
 }
 
 // ── LOADING / ERROR ────────────────────────────────────────────────────────────
@@ -319,7 +322,7 @@ function Dashboard({user,items,movements,clients}){
                     <td style={S.td}><span style={bdg(C.blue)}>{item.category}</span></td>
                     <td style={S.td}><span style={{color:C.danger,fontWeight:700}}>{item.current} un</span></td>
                     <td style={S.td}>{item.stock_min}</td>
-                    <td style={S.td}><span style={{color:C.yellow,fontWeight:700}}>{calcSuggestedOrder(item)} un</span></td>
+                    <td style={S.td}><span style={{color:C.yellow,fontWeight:700}}>{calcSuggestedOrder(item,movements)} un</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -455,7 +458,7 @@ function ItemDetail({item,items,setItems,movements,clients,token,user,onClose}){
         </div>
         <div style={S.modalBody}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
-            {[["Atual",`${current} un`,current<0?C.danger:current<=item.stock_min?C.warning:C.success],["Preço Médio",fmtR(avgPrice),C.yellow],["Pedido Sugerido",`${calcSuggestedOrder(item)} un`,C.blue]].map(([l,v,col])=>(
+            {[["Atual",`${current} un`,current<0?C.danger:current<=item.stock_min?C.warning:C.success],["Preço Médio",fmtR(avgPrice),C.yellow],["Pedido Sugerido",`${calcSuggestedOrder(item,movements)} un`,C.blue]].map(([l,v,col])=>(
               <div key={l} style={{background:C.surfaceHigh,borderRadius:8,padding:12}}><div style={{fontSize:10,color:C.textDim,marginBottom:3}}>{l}</div><div style={{fontSize:15,fontWeight:800,color:col}}>{v}</div></div>
             ))}
           </div>
@@ -972,7 +975,7 @@ function OrderPage({user,items,movements,clients}){
   const [showOrder,setShowOrder]=useState(false);
   const [selDem,setSelDem]=useState({});
   const filtered=cid==="todos"?items:items.filter(i=>i.client_id===parseInt(cid));
-  const enriched=filtered.map(item=>({...item,current:getStock(item),suggested:calcSuggestedOrder(item),avgPrice:calcAvgPrice(item,movements),leadTime:LEAD_TIMES[item.category]||7})).filter(i=>i.current<=i.stock_min);
+  const enriched=filtered.map(item=>({...item,current:getStock(item),suggested:calcSuggestedOrder(item,movements),avgPrice:calcAvgPrice(item,movements),leadTime:LEAD_TIMES[item.category]||7})).filter(i=>i.current<=i.stock_min);
   const per=enriched.filter(i=>i.type==="periodico");
   const dem=enriched.filter(i=>i.type==="demanda");
   const selDemItems=dem.filter(i=>selDem[i.id+"-"+i.client_id]);
