@@ -109,7 +109,7 @@ function calcStock(item,movs){
         +mv.filter(m=>m.type==="ajuste").reduce((s,m)=>s+Number(m.qty),0);
 }
 function calcAvgConsumption(item,movs){
-  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-30);
+  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-90);
   return (movs||[]).filter(m=>m.item_id===item.id&&m.client_id===item.client_id&&m.type==="saida"&&new Date(m.date)>=cutoff).reduce((s,m)=>s+Number(m.qty),0);
 }
 function calcAvgPrice(item,movs){
