@@ -108,8 +108,8 @@ function calcStock(item,movs){
         -mv.filter(m=>m.type==="saida").reduce((s,m)=>s+Number(m.qty),0)
         +mv.filter(m=>m.type==="ajuste").reduce((s,m)=>s+Number(m.qty),0);
 }
-function calcAvgConsumption(item,movs){
-  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-90);
+function calcAvgConsumption(item,movs,dias=90){
+  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-dias);
   return (movs||[]).filter(m=>m.item_id===item.id&&m.client_id===item.client_id&&m.type==="saida"&&new Date(m.date)>=cutoff).reduce((s,m)=>s+Number(m.qty),0);
 }
 function calcAvgPrice(item,movs){
@@ -124,11 +124,16 @@ function calcSuggestedOrder(item,movs){
   return maxSug?Math.max(0,maxSug-getStock(item)):0;
 }
 function calcSuggestedMin(item,movs){
-  const consumoDiario=calcAvgConsumption(item,movs)/30;
+  const dias=item.category==="Piscina"?180:90;
+  const consumoTotal=calcAvgConsumption(item,movs,dias);
+  const consumoDiario=consumoTotal/dias;
   return consumoDiario?Math.ceil(consumoDiario*LEAD_TIME_DIAS*1.3):null;
 }
 function calcSuggestedMax(item,movs){
-  const consumoMensal=calcAvgConsumption(item,movs);
+  const dias=item.category==="Piscina"?180:90;
+  const consumoTotal=calcAvgConsumption(item,movs,dias);
+  const meses=item.category==="Piscina"?6:3;
+  const consumoMensal=consumoTotal/meses;
   return consumoMensal?Math.ceil(consumoMensal*2):null;
 }
 
