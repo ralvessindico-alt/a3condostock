@@ -1518,16 +1518,14 @@ function PublicRequisitionPage({reqToken}){
   useEffect(()=>{
     async function load(){
       try{
-        const reqs=await supaFetch(`/rest/v1/requisitions?token=eq.${reqToken}&select=*`);
-        if(!reqs||reqs.length===0){setErr("Requisição não encontrada ou link inválido.");return;}
-        const r=reqs[0];
+        const result=await supaFetch(`/rest/v1/rpc/rpc_get_requisition_by_token`,{method:"POST",body:JSON.stringify({p_token:reqToken})});
+        if(!result||result.error==="not_found"){setErr("Requisição não encontrada ou link inválido.");return;}
+        const r=result.requisition;
         setReq(r);
-        const ris=await supaFetch(`/rest/v1/requisition_items?requisition_id=eq.${r.id}&select=*`);
-        setReqItems(ris||[]);
-        // Load all items of the client (so collaborator can pick)
-        const its=await supaFetch(`/rest/v1/items?client_id=eq.${r.client_id}&select=*&order=name`);
-        setItems(its||[]);
-        const initQtys=Object.fromEntries((ris||[]).map(i=>[i.id,i.qty_separated??i.qty_requested]));
+        const ris=result.requisition_items||[];
+        setReqItems(ris);
+        setItems(result.items||[]);
+        const initQtys=Object.fromEntries(ris.map(i=>[i.id,i.qty_separated??i.qty_requested]));
         setQtys(initQtys);
         if(r.collaborator_name)setCollabName(r.collaborator_name);
       }catch(e){setErr(e.message);}
@@ -1546,10 +1544,9 @@ function PublicRequisitionPage({reqToken}){
     if(valid.length===0){alert("Selecione ao menos um item.");return;}
     setSaving(true);
     try{
-      const itemsBody=valid.map(l=>({requisition_id:req.id,item_id:parseInt(l.item_id),client_id:req.client_id,qty_requested:parseFloat(l.qty)}));
-      await supaFetch("/rest/v1/requisition_items",{method:"POST",body:JSON.stringify(itemsBody)});
-      const newNotes=collabNotes?`${req.notes?req.notes+" | ":""}Obs colaborador: ${collabNotes}`:req.notes;
-      await supaFetch(`/rest/v1/requisitions?id=eq.${req.id}`,{method:"PATCH",body:JSON.stringify({status:"enviada",collaborator_name:collabName,notes:newNotes,updated_at:new Date().toISOString()})});
+      const lines=valid.map(l=>({item_id:parseInt(l.item_id),qty:parseFloat(l.qty)}));
+      const result=await supaFetch("/rest/v1/rpc/rpc_submit_requisition_request",{method:"POST",body:JSON.stringify({p_token:reqToken,p_collab_name:collabName,p_notes:collabNotes||null,p_lines:lines})});
+      if(result?.error){throw new Error(result.error==="status_invalido"?`Esta requisição já não está mais aberta (status: ${result.status_atual}).`:result.error);}
       setDone(true);
     }catch(e){alert(e.message);}
     finally{setSaving(false);}
@@ -1586,7 +1583,6 @@ function PublicRequisitionPage({reqToken}){
   async function confirm(){
     if(!collabName){alert("Informe seu nome.");return;}
     if(!hasSig){alert("Assine antes de confirmar.");return;}
-    // Check justifications
     for(const ri of reqItems){
       const qtyConf=parseFloat(qtys[ri.id])||0;
       const baseQty=ri.qty_separated;
@@ -1595,18 +1591,13 @@ function PublicRequisitionPage({reqToken}){
     setSaving(true);
     try{
       const sig=canvasRef.current.toDataURL();
-      const today=new Date().toISOString().slice(0,10);
-      // Update each item AND create movement
-      for(const ri of reqItems){
-        const qtyConf=parseFloat(qtys[ri.id])||0;
-        const hasChange=qtyConf!==ri.qty_separated;
-        await supaFetch(`/rest/v1/requisition_items?id=eq.${ri.id}`,{method:"PATCH",body:JSON.stringify({qty_confirmed:qtyConf,justification:hasChange?(justs[ri.id]||"Sem justificativa"):null})});
-        // Lança saída no estoque
-        if(qtyConf>0){
-          await supaFetch("/rest/v1/movements",{method:"POST",body:JSON.stringify({item_id:ri.item_id,client_id:ri.client_id,type:"saida",qty:qtyConf,date:today,user_name:collabName,obs:`REQ-${String(req.id).padStart(3,"0")} - ${collabName}`})});
-        }
-      }
-      await supaFetch(`/rest/v1/requisitions?id=eq.${req.id}`,{method:"PATCH",body:JSON.stringify({status:"concluida",collaborator_name:collabName,signature:sig,confirmed_at:new Date().toISOString(),updated_at:new Date().toISOString()})});
+      const confirmations=reqItems.map(ri=>({
+        requisition_item_id:ri.id,
+        qty_confirmed:parseFloat(qtys[ri.id])||0,
+        justification:justs[ri.id]||null,
+      }));
+      const result=await supaFetch("/rest/v1/rpc/rpc_confirm_requisition",{method:"POST",body:JSON.stringify({p_token:reqToken,p_collab_name:collabName,p_signature:sig,p_confirmations:confirmations})});
+      if(result?.error){throw new Error(result.error==="status_invalido"?`Esta requisição não está mais aguardando confirmação (status: ${result.status_atual}).`:result.error);}
       setDone(true);
     }catch(e){alert(e.message);}
     finally{setSaving(false);}
